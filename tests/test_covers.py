@@ -31,13 +31,13 @@ def database():
         CREATE TABLE inducks_storyversion (storyversioncode TEXT, storycode TEXT);
         CREATE TABLE inducks_entry (entrycode TEXT, issuecode TEXT, storyversioncode TEXT, position TEXT);
         CREATE TABLE inducks_entryurl (entrycode TEXT, sitecode TEXT, pagenumber TEXT, url TEXT, storycode TEXT);
-        INSERT INTO inducks_storyversion VALUES ('S 1','S 1'), ('S 2','S 2'), ('S 3','S 3'), ('CV A','CV A'), ('CV B','CV B');
+        INSERT INTO inducks_storyversion VALUES ('S 1','S 1'), ('S 2','S 2'), ('S 3','S 3'), ('S 9','S 9'), ('CV A','CV A'), ('CV B','CV B');
         INSERT INTO inducks_entry VALUES
-          ('dk/X 1a','dk/X 1','CV A','a'), ('dk/X 1b','dk/X 1','S 1','b'), ('dk/X 1c','dk/X 1','S 2','c'),
+          ('dk/X 1a','dk/X 1','CV A','a'), ('dk/X 1b','dk/X 1','S 1','b'), ('dk/X 1c','dk/X 1','S 2','c'), ('dk/X 1d','dk/X 1','S 9','d'),
           ('no/Y 9a','no/Y 9','CV B','a'), ('no/Y 9b','no/Y 9','S 2','b'), ('no/Y 9c','no/Y 9','S 3','c'),
           ('se/Z 5a','se/Z 5','CV A','a'), ('se/Z 5b','se/Z 5','S 3','b');
         INSERT INTO inducks_entryurl VALUES
-          ('dk/X 1a','webusers','1','x1a.jpg','CV A'), ('se/Z 5a','webusers','1','z5a.jpg','CV A'),
+          ('dk/X 1a','webusers','1','x1a.jpg','CV A'), ('dk/X 1d','webusers','1','x1d.jpg','S 9'), ('dk/X 1d','webusers','2','x1d2.jpg','S 9'), ('se/Z 5a','webusers','1','z5a.jpg','CV A'),
           ('no/Y 9a','webusers','1','y9a.jpg','CV B'), ('no/Y 9a','thumbnails','1','y9a.jpg','CV B');
     """)
     return lambda sql, params=(): conn.execute(sql, params).fetchall()
@@ -64,6 +64,13 @@ class Covers(unittest.TestCase):
     def test_new_cover_gets_no_code(self):
         code = C.find_cover_code(database(), picture(7, "LTB"), ["S 1", "S 2", "S 3"], IMAGES.get, log=lambda *_: None)
         self.assertIsNone(code)
+
+    def test_story_found_from_its_first_page(self):
+        query = database()
+        self.assertEqual(C.page_candidates(query, ["S 1", "S 2"]), {"S 9": [C.scan_url("x1d.jpg")]})
+        pages = {C.scan_url("x1d.jpg"): picture(3, "DANSK")}
+        self.assertEqual(C.find_story_code(query, picture(3, "TEIL 1"), ["S 1", "S 2"], pages.get, log=lambda *_: None), "S 9")
+        self.assertIsNone(C.find_story_code(query, picture(8), ["S 1", "S 2"], pages.get, log=lambda *_: None))
 
     def test_unreadable_image_or_no_stories(self):
         self.assertIsNone(C.find_cover_code(database(), b"not an image", ["S 1", "S 2"], IMAGES.get, log=lambda *_: None))

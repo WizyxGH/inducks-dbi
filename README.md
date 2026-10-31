@@ -16,12 +16,13 @@ index files (`.dbi`):
 - **`inducks_dbi.covers`**: `find_cover_code(query, cover_bytes, story_codes, fetch)` tells
   which known cover an issue reprints. Candidates are the covers of the issues printing the same
   stories (table `inducks_entryurl` for their scans); the artwork area is compared by difference
-  hash, and a code is kept only when it is clearly the closest. Needs Pillow (`[covers]` extra).
+  hash, and a code is kept only when it is clearly the closest. `find_story_code` does the same
+  for a story from the image of its first page. Needs Pillow (`[covers]` extra).
 
 ## Install
 
 ```bash
-pip install "inducks-dbi[covers] @ git+https://github.com/WizyxGH/inducks-dbi@v0.1.0"
+pip install "inducks-dbi[covers] @ git+https://github.com/WizyxGH/inducks-dbi@v0.2.0"
 ```
 
 ## Tests
