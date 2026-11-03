@@ -65,12 +65,29 @@ def part_lengths(query, code: str, total: int) -> list[int] | None:
             lengths = tuple(parts[n] for n in numbers)
             if sum(lengths) == total and all(lengths):
                 votes[lengths] += 1
-    if not votes:
-        return None
-    (best, count), *rest = votes.most_common()
-    if rest and rest[0][1] == count:
-        return None  # two splits equally common: no rule decides
-    return list(best)
+    if votes:
+        (best, count), *rest = votes.most_common()
+        if not (rest and rest[0][1] == count):
+            return list(best)
+
+    # Cross-issue fallback: When a story originally ran across multiple weekly issues
+    # (e.g. Topolino 3086, 3087, 3088, 3089), each issue only contains one part.
+    # We aggregate the agreed page counts per part number across all issues.
+    by_part: dict[int, Counter] = {}
+    for issue, part, pages in rows or []:
+        p_num = _int(part)
+        p_pages = _int(pages)
+        if p_num > 0 and p_pages > 0:
+            by_part.setdefault(p_num, Counter())[p_pages] += 1
+
+    if by_part:
+        max_p = max(by_part.keys())
+        if sorted(by_part.keys()) == list(range(1, max_p + 1)) and max_p > 1:
+            candidate_lengths = [by_part[p].most_common(1)[0][0] for p in range(1, max_p + 1)]
+            if sum(candidate_lengths) == total and all(candidate_lengths):
+                return candidate_lengths
+
+    return None
 
 
 def _equivalent_code(query, stories: list[dict], index: int) -> str | None:
