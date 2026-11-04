@@ -83,13 +83,18 @@ def split_blocks(lines: List[str], strip_trailing_blanks: bool = False) -> List[
 def parse_entry(line: str) -> Dict[str, str]:
     values = {name: line[a:b].strip() for name, (a, b) in COLUMNS.items()}
     rest = line[52:] if len(line) > 52 else ""
-    tags = {k.lower(): v for k, v in tags_of(rest).items()}
+    parsed_tags = tags_of(rest)
+    tags = {k.lower(): v for k, v in parsed_tags.items()}
     for name in COLUMNS:
         if name in tags:
             values[name] = tags[name].strip()
     first = rest.find("[")
     values["title"] = (rest[:first] if first >= 0 else rest).strip()
     values["part"] = tags.get("part", "")
+    values["tags"] = parsed_tags
+    for k, v in tags.items():
+        if k not in values:
+            values[k] = v
     return values
 
 
@@ -153,3 +158,77 @@ def code_and_pages(story_code: str, pages: str):
         tags.append(f"[pages:{pages}]")
         pages = ""
     return story_code.ljust(14), pages.rjust(2), tags
+
+
+def format_header(issue_code: str, level: int = 3, tags: Optional[Dict[str, str]] = None) -> str:
+    """Format an Inducks header line per Bolderbast: issue code in cols 1-12, 'h' in 14, level in 15."""
+    code = (issue_code or "").strip()
+    tag_dict = dict(tags or {})
+    if len(code) <= 12:
+        prefix = f"{code.ljust(13)}h{level}"
+    else:
+        prefix = f"{'->'.ljust(13)}h{level}"
+        tag_dict.setdefault("entrycode", code)
+    tag_str = " ".join(f"[{k}:{str(v).strip()}]" for k, v in tag_dict.items() if str(v).strip())
+    return f"{prefix} {tag_str}".rstrip() if tag_str else prefix
+
+
+def format_entry(entry: Dict[str, str | int]) -> str:
+    """Format an entry dict into an official Bolderbast 52-column line (xh7111).
+    Columns:
+    0..11  (12 chars): entrycode
+    12..25 (14 chars): storycode
+    26..27 ( 2 chars): pages
+    28     ( 1 char) : brokpg
+    29..30 ( 2 chars): pagel
+    31     ( 1 char) : space
+    32..35 ( 4 chars): plot
+    36..39 ( 4 chars): writ
+    40..43 ( 4 chars): art
+    44..47 ( 4 chars): ink
+    48..51 ( 4 chars): hero
+    52+              : title and tags
+    """
+    raw_tags = dict(entry.get("tags", {})) if isinstance(entry.get("tags"), dict) else {}
+    for k, v in entry.items():
+        if k not in COLUMNS and k not in ("title", "tags"):
+            raw_tags[k] = str(v)
+
+    def col_val(name: str, width: int, right_align: bool = False) -> str:
+        val = str(entry.get(name, "") or "").strip()
+        if len(val) <= width:
+            return val.rjust(width) if right_align else val.ljust(width)
+        if name == "entrycode":
+            raw_tags["entrycode"] = val
+            return "->".ljust(width)
+        elif name == "storycode":
+            raw_tags["storycode"] = val
+            return "->".ljust(width)
+        elif name == "brokpg":
+            raw_tags["brokpg"] = val
+            return "+"
+        elif name == "pages":
+            raw_tags["pages"] = val
+            return " " * width
+        else:
+            raw_tags[name] = val
+            return " " * width
+
+    ec = col_val("entrycode", 12)
+    sc = col_val("storycode", 14)
+    pg = col_val("pages", 2, right_align=True)
+    bp = col_val("brokpg", 1) or " "
+    pl = col_val("pagel", 2)
+    sp = " "
+    c_plot = col_val("plot", 4)
+    c_writ = col_val("writ", 4)
+    c_art  = col_val("art", 4)
+    c_ink  = col_val("ink", 4)
+    c_hero = col_val("hero", 4)
+
+    prefix = f"{ec}{sc}{pg}{bp}{pl}{sp}{c_plot}{c_writ}{c_art}{c_ink}{c_hero}"
+    title = str(entry.get("title", "") or "").strip()
+    tag_str = " ".join(f"[{k}:{str(v).strip()}]" for k, v in raw_tags.items() if str(v).strip())
+
+    rest = " ".join(filter(None, [title, tag_str]))
+    return f"{prefix}{rest}".rstrip() if rest else prefix.rstrip()

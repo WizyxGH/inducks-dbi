@@ -3,7 +3,12 @@ import sqlite3
 import unittest
 
 from inducks_dbi import lines as L
-from inducks_dbi.story_rules import apply_story_rules
+from inducks_dbi.story_rules import (
+    apply_story_rules,
+    known_story,
+    cover_story_xref,
+    serial_part_from_previous_issue,
+)
 
 
 class Lines(unittest.TestCase):
@@ -37,6 +42,46 @@ class Lines(unittest.TestCase):
         self.assertEqual(L.code_and_pages("I TL 3583-1P", "104"), ("I TL 3583-1P  ", "  ", ["[pages:104]"]))
         self.assertEqual(L.code_and_pages("ABCDEFGHIJKLMNO", "1")[0].strip(), "->")
 
+    def test_format_header(self):
+        line = L.format_header("DVBH  88", 3, {"issdate": "1998-09-21", "pages": "36"})
+        self.assertTrue(L.is_header(line))
+        self.assertEqual(line[13:15], "h3")
+        self.assertEqual(L.header_code(line), "DVBH 88")
+        self.assertEqual(L.tags_of(line), {"issdate": "1998-09-21", "pages": "36"})
+
+    def test_format_entry_and_round_trip(self):
+        entry = {
+            "entrycode": "DVBH  88p02",
+            "storycode": "D 93332",
+            "pages": 2,
+            "hero": "MIM",
+            "title": "Dọn rác",
+            "tags": {"trans": "Đông Quỳnh"},
+        }
+        line = L.format_entry(entry)
+        self.assertEqual(len(line[:52]), 52)
+        parsed = L.parse_entry(line)
+        self.assertEqual(parsed["entrycode"], "DVBH  88p02")
+        self.assertEqual(parsed["storycode"], "D 93332")
+        self.assertEqual(parsed["pages"], "2")
+        self.assertEqual(parsed["hero"], "MIM")
+        self.assertEqual(parsed["title"], "Dọn rác")
+        self.assertEqual(parsed.get("trans"), "Đông Quỳnh")
+
+    def test_format_entry_overflow(self):
+        entry = {
+            "entrycode": "VERY_LONG_ISSUE_CODE_p1234",
+            "storycode": "VERY_LONG_STORY_CODE_12345",
+            "pages": 128,
+            "title": "Novel",
+        }
+        line = L.format_entry(entry)
+        self.assertEqual(len(line[:52]), 52)
+        parsed = L.parse_entry(line)
+        self.assertEqual(parsed["entrycode"], "VERY_LONG_ISSUE_CODE_p1234")
+        self.assertEqual(parsed["storycode"], "VERY_LONG_STORY_CODE_12345")
+        self.assertEqual(parsed["pages"], "128")
+
 
 def database():
     conn = sqlite3.connect(":memory:")
@@ -47,7 +92,8 @@ def database():
     conn.executemany("INSERT INTO inducks_storyversion VALUES (?,?,?,?)", [
         ("X 1", "X 1", 52, 3), ("a/A 1p009", "X 1", 26, 3), ("a/A 1p037", "X 1", 26, 3),
         ("Y 1", "Y 1", 40, 3), ("b/B 1p005", "Y 1", 20, 3), ("b/B 1p045", "Y 1", 20, 3), ("b/B 1p089", "Y 1", 24, 3),
-        ("Z 1", "Z 1", 20, 3), ("Z 2", "Z 2", 24, 4), ("Z 3", "Z 3", 30, 3)])
+        ("Z 1", "Z 1", 20, 3), ("Z 2", "Z 2", 24, 4), ("Z 3", "Z 3", 30, 3),
+        ("foreign_ver", "FOREIGN 1", 14, 4)])
     conn.executemany("INSERT INTO inducks_entry VALUES (?,?,?,?,?)", [
         ("a/A 1p009", "a/A 1", "a/A 1p009", "p009", "1"), ("a/A 1p037", "a/A 1", "a/A 1p037", "p037", "2"),
         ("b/B 1p005", "b/B 1", "b/B 1p005", "p005", "1"), ("b/B 1p025", "b/B 1", "Z 1", "p025", ""),
@@ -87,6 +133,28 @@ class StoryRules(unittest.TestCase):
         empty = sqlite3.connect(":memory:")
         stories = [story("X 1", 5, 52)]
         self.assertEqual(apply_story_rules(stories, lambda s, p=(): empty.execute(s, p).fetchall()), stories)
+
+    def test_known_story_fallback(self):
+        self.assertEqual(known_story(self.query, "FOREIGN 1"), {"pages": 14, "rowsperpage": 4})
+
+    def test_serial_part_from_previous_issue(self):
+        # Story Z 1 was printed in b/B 1
+        part_num = serial_part_from_previous_issue(self.query, "Z 1", "b/B 1")
+        self.assertEqual(part_num, 2)
+        # Story Z 1 was NOT printed in a/A 1
+        part_num = serial_part_from_previous_issue(self.query, "Z 1", "a/A 1")
+        self.assertEqual(part_num, 1)
+
+    def test_cover_story_xref(self):
+        stories = [
+            {"title": "The Phantom of Notre Duck", "story_code": "W US   60-01"},
+            {"title": "Picnic", "story_code": "D 93332"},
+        ]
+        self.assertEqual(
+            cover_story_xref("The Phantom of Notre Duck", stories),
+            "W US   60-01(story)"
+        )
+        self.assertIsNone(cover_story_xref("Unrelated Title", stories))
 
 
 if __name__ == "__main__":

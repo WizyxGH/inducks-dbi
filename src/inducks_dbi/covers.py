@@ -77,10 +77,11 @@ def _candidates(query, story_codes, own_issue: str, issues: int, covers: bool) -
         f"WHERE v.storycode IN ({marks}) AND e.issuecode <> ? GROUP BY e.issuecode "
         "HAVING n >= ? ORDER BY n DESC LIMIT ?", (*codes, own_issue, min(2, len(codes)), issues)) or []
     found: dict[str, list[str]] = {}
+    pos_filter = "e.position = 'a'" if covers else "e.position NOT IN ('a', 'fc', 'bc') AND v.storycode NOT LIKE '%-00'"
     for issuecode, _ in rows:
         for (code,) in query(
                 "SELECT v.storycode FROM inducks_entry e JOIN inducks_storyversion v "
-                f"ON v.storyversioncode = e.storyversioncode WHERE e.issuecode = ? AND e.position {'=' if covers else '<>'} 'a'",
+                f"ON v.storyversioncode = e.storyversioncode WHERE e.issuecode = ? AND {pos_filter}",
                 (issuecode,)) or []:
             if code and code not in found:
                 found[code] = [scan_url(url) for entrycode, url in query(

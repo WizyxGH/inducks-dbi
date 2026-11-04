@@ -42,7 +42,10 @@ def known_story(query, code: str) -> dict | None:
     if not code:
         return None
     rows = query("SELECT entirepages, rowsperpage FROM inducks_storyversion "
-                    "WHERE storycode = ? AND storyversioncode = ?", (code, code))
+                 "WHERE storycode = ? AND storyversioncode = ?", (code, code))
+    if not rows:
+        rows = query("SELECT entirepages, rowsperpage FROM inducks_storyversion "
+                     "WHERE storycode = ? ORDER BY entirepages DESC LIMIT 1", (code,))
     if not rows:
         return None
     return {"pages": _int(rows[0][0]), "rowsperpage": _int(rows[0][1])}
@@ -87,6 +90,32 @@ def part_lengths(query, code: str, total: int) -> list[int] | None:
             if sum(candidate_lengths) == total and all(candidate_lengths):
                 return candidate_lengths
 
+    return None
+
+
+def serial_part_from_previous_issue(query, story_code: str, prev_issue_code: str) -> int:
+    """Check if the story was printed in the immediately preceding issue; returns 2 if present, 1 otherwise."""
+    if not story_code or not prev_issue_code:
+        return 1
+    rows = query(
+        "SELECT 1 FROM inducks_entry e "
+        "JOIN inducks_storyversion sv ON sv.storyversioncode = e.storyversioncode OR sv.storycode = e.storyversioncode "
+        "WHERE e.issuecode = ? AND sv.storycode = ? LIMIT 1",
+        (prev_issue_code, story_code)
+    )
+    return 2 if rows else 1
+
+
+def cover_story_xref(cover_title: str, stories: list[dict]) -> str | None:
+    """Returns '[xref:<storycode>(story)]' tag value when a cover title matches a story in the issue."""
+    from .lines import norm
+    if not cover_title or not stories:
+        return None
+    c_norm = norm(cover_title).lower()
+    for s in stories:
+        s_title = norm(s.get("title", "")).lower()
+        if s_title and (s_title == c_norm or (len(s_title) > 5 and s_title in c_norm)) and s.get("story_code"):
+            return f"{s['story_code']}(story)"
     return None
 
 
