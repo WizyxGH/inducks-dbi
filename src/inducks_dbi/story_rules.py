@@ -93,6 +93,45 @@ def part_lengths(query, code: str, total: int) -> list[int] | None:
     return None
 
 
+def issue_number_key(iss_n: str):
+    """Natural sorting key for issue numbers (e.g. '2004-14' -> (2004, 14))."""
+    m = re.findall(r"\d+", str(iss_n or ""))
+    return tuple(int(x) for x in m) if m else (0,)
+
+
+def serial_part_from_history(query, pub_code: str, issue_num: str, story_code: str) -> int | None:
+    """Finds the serial part number (e.g. 1, 2, 3, 4...) for a story in a publication
+    by inspecting previous issues that printed earlier parts of the same story."""
+    if not pub_code or not story_code:
+        return None
+    pub = pub_code.split("/")[-1].strip()
+    full_pub = pub_code if "/" in pub_code else f"%/{pub_code}"
+
+    rows = query("""
+        SELECT e.part, i.issuenumber
+        FROM inducks_entry e
+        JOIN inducks_issue i ON i.issuecode = e.issuecode
+        JOIN inducks_storyversion sv ON sv.storyversioncode = e.storyversioncode
+        WHERE (i.publicationcode = ? OR i.publicationcode LIKE ?)
+          AND sv.storycode = ?
+          AND e.part != ''
+    """, (pub, full_pub, story_code))
+
+    if rows:
+        target_key = issue_number_key(issue_num)
+        earlier = []
+        for part_str, iss_n in rows:
+            if issue_number_key(iss_n) < target_key:
+                try:
+                    earlier.append((int(part_str), issue_number_key(iss_n)))
+                except (ValueError, TypeError):
+                    pass
+        if earlier:
+            earlier.sort(key=lambda x: x[1], reverse=True)
+            return earlier[0][0] + 1
+    return None
+
+
 def serial_part_from_previous_issue(query, story_code: str, prev_issue_code: str) -> int:
     """Check if the story was printed in the immediately preceding issue; returns 2 if present, 1 otherwise."""
     if not story_code or not prev_issue_code:

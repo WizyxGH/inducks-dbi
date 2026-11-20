@@ -88,17 +88,27 @@ def database():
     conn.executescript("""
         CREATE TABLE inducks_storyversion (storyversioncode TEXT, storycode TEXT, entirepages TEXT, rowsperpage TEXT);
         CREATE TABLE inducks_entry (entrycode TEXT, issuecode TEXT, storyversioncode TEXT, position TEXT, part TEXT);
+        CREATE TABLE inducks_issue (issuecode TEXT, publicationcode TEXT, issuenumber TEXT);
     """)
     conn.executemany("INSERT INTO inducks_storyversion VALUES (?,?,?,?)", [
         ("X 1", "X 1", 52, 3), ("a/A 1p009", "X 1", 26, 3), ("a/A 1p037", "X 1", 26, 3),
         ("Y 1", "Y 1", 40, 3), ("b/B 1p005", "Y 1", 20, 3), ("b/B 1p045", "Y 1", 20, 3), ("b/B 1p089", "Y 1", 24, 3),
         ("Z 1", "Z 1", 20, 3), ("Z 2", "Z 2", 24, 4), ("Z 3", "Z 3", 30, 3),
-        ("foreign_ver", "FOREIGN 1", 14, 4)])
+        ("foreign_ver", "FOREIGN 1", 14, 4),
+        ("SV_TERRA_1", "I TL TERRA", 28, 3)])
     conn.executemany("INSERT INTO inducks_entry VALUES (?,?,?,?,?)", [
         ("a/A 1p009", "a/A 1", "a/A 1p009", "p009", "1"), ("a/A 1p037", "a/A 1", "a/A 1p037", "p037", "2"),
         ("b/B 1p005", "b/B 1", "b/B 1p005", "p005", "1"), ("b/B 1p025", "b/B 1", "Z 1", "p025", ""),
         ("b/B 1p045", "b/B 1", "b/B 1p045", "p045", "2"), ("b/B 1p065", "b/B 1", "Z 2", "p065", ""),
-        ("b/B 1p089", "b/B 1", "b/B 1p089", "p089", "3")])
+        ("b/B 1p089", "b/B 1", "b/B 1p089", "p089", "3"),
+        ("TL 3701p", "it/TL 3701", "SV_TERRA_1", "p005", "1"),
+        ("TL 3702p", "it/TL 3702", "SV_TERRA_1", "p005", "2"),
+        ("TL 3703p", "it/TL 3703", "SV_TERRA_1", "p005", "3")])
+    conn.executemany("INSERT INTO inducks_issue VALUES (?,?,?)", [
+        ("it/TL 3701", "it/TL", "3701"),
+        ("it/TL 3702", "it/TL", "3702"),
+        ("it/TL 3703", "it/TL", "3703"),
+        ("it/TL 3704", "it/TL", "3704")])
     return lambda sql, params=(): conn.execute(sql, params).fetchall()
 
 
@@ -144,6 +154,16 @@ class StoryRules(unittest.TestCase):
         # Story Z 1 was NOT printed in a/A 1
         part_num = serial_part_from_previous_issue(self.query, "Z 1", "a/A 1")
         self.assertEqual(part_num, 1)
+
+    def test_serial_part_from_history(self):
+        from inducks_dbi.story_rules import serial_part_from_history
+        # For issue 3704, it should deduce part 4!
+        part = serial_part_from_history(self.query, "it/TL", "3704", "I TL TERRA")
+        self.assertEqual(part, 4)
+
+        # For issue 3702, it should deduce part 2!
+        part_2 = serial_part_from_history(self.query, "it/TL", "3702", "I TL TERRA")
+        self.assertEqual(part_2, 2)
 
     def test_cover_story_xref(self):
         stories = [
