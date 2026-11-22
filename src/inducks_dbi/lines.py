@@ -2,17 +2,17 @@
 columns, used to read (parse_entry, split_blocks), write (code_and_pages) and compare
 (compare_blocks) index lines.
 
-Ligne d'en-tête : « h » en position 14, niveau (1, 2, 3) en 15, code sur les positions 1-12.
-Ligne d'entrée : entrycode 1-12, storycode 13-26, pages 27-28, brokpg 29, pagel 30-31,
-plot 33-36, writ 37-40, art 41-44, ink 45-48, hero 49-52, titre à partir de 53. Un champ trop long
-pour sa colonne est écrit en balise ([pages:104], [entrycode:…] avec « -> » dans la colonne).
+Header line: 'h' at column 14, level (1, 2, 3) at 15, issue code on columns 1-12.
+Entry line: entrycode 1-12, storycode 13-26, pages 27-28, brokpg 29, pagel 30-31,
+plot 33-36, writ 37-40, art 41-44, ink 45-48, hero 49-52, title starting at 53.
+A field too long for its column is written as a tag ([pages:104], [entrycode:...] with '->' in column).
 """
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 TAG = re.compile(r"\[([^:\]\[]+):([^\]]*)\]")
-COLUMNS = {  # (début, fin) en indices Python
+COLUMNS = {  # (start, end) zero-based Python indices
     "entrycode": (0, 12), "storycode": (12, 26), "pages": (26, 28), "brokpg": (28, 29),
     "pagel": (29, 31), "plot": (32, 36), "writ": (36, 40), "art": (40, 44), "ink": (44, 48),
     "hero": (48, 52),
@@ -21,7 +21,7 @@ COMPARED = ("storycode", "pages", "brokpg", "pagel", "plot", "writ", "art", "ink
 
 
 def norm(text: str) -> str:
-    """Espaces réduits : « LTB  609 » = « LTB 609 »."""
+    """Normalize whitespace: 'LTB  609' -> 'LTB 609'."""
     return re.sub(r"\s+", " ", text or "").strip()
 
 
@@ -34,7 +34,7 @@ def is_comment(line: str) -> bool:
 
 
 def tags_of(text: str) -> Dict[str, str]:
-    """Balises [nom:valeur], noms tels qu'écrits (« desc-de », « Real Places »)."""
+    """Extract [name:value] tags, keeping names as written ('desc-de', 'Real Places')."""
     return dict(TAG.findall(text))
 
 
@@ -47,7 +47,7 @@ def header_code(line: str) -> str:
 
 @dataclass(eq=False)
 class Block:
-    """Un numéro (ligne h3 et ses entrées) ; code vide pour ce qui n'en est pas (h1, h2, commentaires)."""
+    """An issue block (h3 line and its entries); empty code for non-issue items (h1, h2, comments)."""
     code: str
     lines: List[str] = field(default_factory=list)
 
@@ -60,8 +60,8 @@ class Block:
 
 
 def split_blocks(lines: List[str], strip_trailing_blanks: bool = False) -> List[Block]:
-    """Découpe un fichier en blocs ; joints bout à bout, ils redonnent le fichier (sauf, avec
-    strip_trailing_blanks, les lignes vides qui séparent les numéros d'un index généré)."""
+    """Split a file into blocks; concatenated back, they reproduce the original file
+    (except trailing blank lines separating generated issue blocks when strip_trailing_blanks=True)."""
     blocks: List[Block] = []
     current: Optional[Block] = None
     for line in lines:
