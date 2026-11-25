@@ -13,6 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 covers = ["Pillow>=10"]
+vision = ["Pillow>=10", "numpy>=1.24", "torch>=2.0", "torchvision>=0.15", "ultralytics>=8.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

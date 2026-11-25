@@ -131,11 +131,23 @@ def best_match(image_bytes: bytes, candidates: dict[str, list[str]], fetch,
 def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: str = "", log=print):
     """Story code of the reprinted cover, or None (new cover, or no clear match)."""
     candidates = cover_candidates(query, story_codes, own_issue)
-    if not candidates:
-        return None
-    code, scores = best_match(cover_bytes, candidates, fetch)
-    log(f"  [cover] {'reprint of ' + code if code else 'no clear match'} ({_shown(scores)})")
-    return code
+    if candidates:
+        code, scores = best_match(cover_bytes, candidates, fetch)
+        if code:
+            log(f"  [cover] reprint of {code} ({_shown(scores)})")
+            return code
+        log(f"  [cover] no clear match in shared-story candidates ({_shown(scores)})")
+
+    # Global fallback: DINOv2 cover embedding search (What-The-Duck style, works even without shared stories)
+    try:
+        from .vision import find_cover_by_embedding
+        emb_code, emb_scores = find_cover_by_embedding(cover_bytes)
+        if emb_code:
+            log(f"  [cover-vision] reprint of {emb_code} ({_shown(emb_scores)})")
+            return emb_code
+    except Exception:
+        pass
+    return None
 
 
 def find_story_code(query, page_bytes: bytes, story_codes, fetch, own_issue: str = "", log=print):
