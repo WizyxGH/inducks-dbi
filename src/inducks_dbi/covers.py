@@ -158,9 +158,49 @@ def best_match(image_bytes: bytes, candidates: dict[str, list[str]], fetch,
     return None, scores
 
 
-def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: str = "", log=print):
+def _filter_candidates_by_characters(
+    query,
+    candidates: dict[str, list[str]],
+    cover_chars: list[str] | None,
+) -> dict[str, list[str]]:
+    """Prioritizes/filters cover candidates using ``inducks_appearance`` when ``cover_chars`` are known."""
+    wanted = {c.strip() for c in (cover_chars or []) if c and c.strip()}
+    if not candidates or not wanted:
+        return candidates
+    try:
+        has_app = query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inducks_appearance'")
+        if not has_app:
+            return candidates
+        codes = list(candidates.keys())
+        marks = ", ".join("?" * len(codes))
+        rows = query(
+            "SELECT DISTINCT sv.storycode, a.charactercode "
+            "FROM inducks_storyversion sv "
+            "JOIN inducks_appearance a ON a.storyversioncode = sv.storyversioncode "
+            f"WHERE sv.storycode IN ({marks})",
+            tuple(codes),
+        ) or []
+    except Exception:
+        return candidates
+    if not rows:
+        return candidates
+    by_code: dict[str, set[str]] = {}
+    for sc, ch in rows:
+        if sc and ch:
+            by_code.setdefault(sc, set()).add(ch)
+    matching = {c: urls for c, urls in candidates.items() if by_code.get(c, set()) & wanted}
+    if not matching:
+        return candidates
+    # Keep matching covers plus any candidate with no appearance rows recorded at all.
+    return {c: urls for c, urls in candidates.items() if c in matching or c not in by_code}
+
+
+def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: str = "",
+                    cover_chars: list[str] | None = None, log=print):
     """Story code of the reprinted cover, or None (new cover, or no clear match)."""
-    candidates = cover_candidates(query, story_codes, own_issue)
+    candidates = _filter_candidates_by_characters(
+        query, cover_candidates(query, story_codes, own_issue), cover_chars
+    )
     if candidates:
         code, scores = best_match(cover_bytes, candidates, fetch)
         if code:
@@ -169,8 +209,12 @@ def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: st
         log(f"  [cover] no clear match in shared-story candidates ({_shown(scores)})")
 
     if len({c for c in story_codes if c}) >= 2:
-        single_candidates = cover_candidates(query, story_codes, own_issue, min_shared=1)
-        extra = {k: v for k, v in single_candidates.items() if k not in candidates}
+        single_candidates = cover_candidates(
+            query, story_codes, own_issue, issues=24 if cover_chars else 12, min_shared=1
+        )
+        extra = _filter_candidates_by_characters(
+            query, {k: v for k, v in single_candidates.items() if k not in candidates}, cover_chars
+        )
         if extra:
             code, scores = best_match(cover_bytes, extra, fetch)
             if code:

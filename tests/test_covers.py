@@ -87,6 +87,26 @@ class Covers(unittest.TestCase):
         self.assertIsNone(C.find_cover_code(database(), b"not an image", ["S 1", "S 2"], IMAGES.get, log=lambda *_: None))
         self.assertIsNone(C.find_cover_code(database(), picture(1), [], IMAGES.get, log=lambda *_: None))
 
+    def test_cover_characters_filter_disambiguates_candidates(self):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript("""
+            CREATE TABLE inducks_storyversion (storyversioncode TEXT, storycode TEXT, entirepages TEXT);
+            CREATE TABLE inducks_entry (entrycode TEXT, issuecode TEXT, storyversioncode TEXT, position TEXT);
+            CREATE TABLE inducks_entryurl (entrycode TEXT, sitecode TEXT, pagenumber TEXT, url TEXT, storycode TEXT);
+            CREATE TABLE inducks_appearance (storyversioncode TEXT, charactercode TEXT);
+            INSERT INTO inducks_storyversion VALUES ('S 1','S 1','10'), ('CV A','CV A','1'), ('CV B','CV B','1');
+            INSERT INTO inducks_entry VALUES
+              ('dk/X 1a','dk/X 1','CV A','a'), ('dk/X 1b','dk/X 1','S 1','b'),
+              ('no/Y 9a','no/Y 9','CV B','a'), ('no/Y 9b','no/Y 9','S 1','b');
+            INSERT INTO inducks_entryurl VALUES
+              ('dk/X 1a','webusers','1','x1a.jpg','CV A'),
+              ('no/Y 9a','webusers','1','y9a.jpg','CV B');
+            INSERT INTO inducks_appearance VALUES ('CV A', 'DD'), ('CV B', 'MM');
+        """)
+        q = lambda sql, params=(): conn.execute(sql, params).fetchall()
+        filtered = C._filter_candidates_by_characters(q, {"CV A": ["u1"], "CV B": ["u2"]}, ["DD"])
+        self.assertEqual(filtered, {"CV A": ["u1"]})
+
 
 if __name__ == "__main__":
     unittest.main()
