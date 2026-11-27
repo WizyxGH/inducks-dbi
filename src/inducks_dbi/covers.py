@@ -54,11 +54,12 @@ def _same_issue(entrycode: str, issue: str) -> bool:
     return bool(issue) and entrycode.startswith(issue) and not entrycode[len(issue):len(issue) + 1].isdigit()
 
 
-def cover_candidates(query, story_codes, own_issue: str = "", issues: int = 12) -> dict[str, list[str]]:
+def cover_candidates(query, story_codes, own_issue: str = "", issues: int = 12,
+                     min_shared: int | None = None) -> dict[str, list[str]]:
     """Cover story codes of the issues printing the most of ``story_codes`` (at least two, or the
-    only one given), each with the scan URLs of all its printings but ``own_issue``'s:
-    {storycode: [url, ...]}."""
-    return _candidates(query, story_codes, own_issue, issues, covers=True)
+    only one given, unless ``min_shared`` overrides it), each with the scan URLs of all its
+    printings but ``own_issue``'s: {storycode: [url, ...]}."""
+    return _candidates(query, story_codes, own_issue, issues, covers=True, min_shared=min_shared)
 
 
 def page_candidates(query, story_codes, own_issue: str = "", issues: int = 12) -> dict[str, list[str]]:
@@ -93,16 +94,18 @@ def page_candidates_by_length(query, pages: int, own_issue: str = "", limit: int
     return found
 
 
-def _candidates(query, story_codes, own_issue: str, issues: int, covers: bool) -> dict[str, list[str]]:
+def _candidates(query, story_codes, own_issue: str, issues: int, covers: bool,
+                min_shared: int | None = None) -> dict[str, list[str]]:
     codes = sorted({c for c in story_codes if c})
     if not codes:
         return {}
+    threshold = min(2, len(codes)) if min_shared is None else min_shared
     marks = ", ".join("?" * len(codes))
     rows = query(
         "SELECT e.issuecode, COUNT(DISTINCT v.storycode) AS n FROM inducks_entry e "
         "JOIN inducks_storyversion v ON v.storyversioncode = e.storyversioncode "
         f"WHERE v.storycode IN ({marks}) AND e.issuecode <> ? GROUP BY e.issuecode "
-        "HAVING n >= ? ORDER BY n DESC LIMIT ?", (*codes, own_issue, min(2, len(codes)), issues)) or []
+        "HAVING n >= ? ORDER BY n DESC LIMIT ?", (*codes, own_issue, threshold, issues)) or []
     found: dict[str, list[str]] = {}
     pos_filter = "e.position = 'a'" if covers else "e.position NOT IN ('a', 'fc', 'bc') AND v.storycode NOT LIKE '%-00'"
     for issuecode, _ in rows:
@@ -164,6 +167,15 @@ def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: st
             log(f"  [cover] reprint of {code} ({_shown(scores)})")
             return code
         log(f"  [cover] no clear match in shared-story candidates ({_shown(scores)})")
+
+    if len({c for c in story_codes if c}) >= 2:
+        single_candidates = cover_candidates(query, story_codes, own_issue, min_shared=1)
+        extra = {k: v for k, v in single_candidates.items() if k not in candidates}
+        if extra:
+            code, scores = best_match(cover_bytes, extra, fetch)
+            if code:
+                log(f"  [cover] reprint of {code} ({_shown(scores)})")
+                return code
 
     # Global fallback: DINOv2 cover embedding search (What-The-Duck style, works even without shared stories)
     try:
