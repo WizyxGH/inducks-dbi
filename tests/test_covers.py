@@ -28,10 +28,10 @@ def picture(seed: int, logo: str = "", shift: int = 0) -> bytes:
 def database():
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
-        CREATE TABLE inducks_storyversion (storyversioncode TEXT, storycode TEXT);
+        CREATE TABLE inducks_storyversion (storyversioncode TEXT, storycode TEXT, entirepages TEXT);
         CREATE TABLE inducks_entry (entrycode TEXT, issuecode TEXT, storyversioncode TEXT, position TEXT);
         CREATE TABLE inducks_entryurl (entrycode TEXT, sitecode TEXT, pagenumber TEXT, url TEXT, storycode TEXT);
-        INSERT INTO inducks_storyversion VALUES ('S 1','S 1'), ('S 2','S 2'), ('S 3','S 3'), ('S 9','S 9'), ('CV A','CV A'), ('CV B','CV B');
+        INSERT INTO inducks_storyversion VALUES ('S 1','S 1','10'), ('S 2','S 2','12'), ('S 3','S 3','14'), ('S 9','S 9','24'), ('CV A','CV A','1'), ('CV B','CV B','1');
         INSERT INTO inducks_entry VALUES
           ('dk/X 1a','dk/X 1','CV A','a'), ('dk/X 1b','dk/X 1','S 1','b'), ('dk/X 1c','dk/X 1','S 2','c'), ('dk/X 1d','dk/X 1','S 9','d'),
           ('no/Y 9a','no/Y 9','CV B','a'), ('no/Y 9b','no/Y 9','S 2','b'), ('no/Y 9c','no/Y 9','S 3','c'),
@@ -71,6 +71,17 @@ class Covers(unittest.TestCase):
         pages = {C.scan_url("x1d.jpg"): picture(3, "DANSK")}
         self.assertEqual(C.find_story_code(query, picture(3, "TEIL 1"), ["S 1", "S 2"], pages.get, log=lambda *_: None), "S 9")
         self.assertIsNone(C.find_story_code(query, picture(8), ["S 1", "S 2"], pages.get, log=lambda *_: None))
+
+    def test_story_found_from_first_page_by_length_when_no_known_stories(self):
+        query = database()
+        pages = {C.scan_url("x1d.jpg"): picture(3, "GR")}
+        self.assertEqual(
+            C.find_story_code(query, picture(3, "PR"), [], pages.get, pages=24, log=lambda *_: None),
+            "S 9",
+        )
+        self.assertIsNone(
+            C.find_story_code(query, picture(3, "PR"), [], pages.get, pages=99, log=lambda *_: None)
+        )
 
     def test_unreadable_image_or_no_stories(self):
         self.assertIsNone(C.find_cover_code(database(), b"not an image", ["S 1", "S 2"], IMAGES.get, log=lambda *_: None))

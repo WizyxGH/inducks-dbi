@@ -22,7 +22,9 @@ index files (`.dbi`) and story databases (`.fsb`, `.dbs`):
   which known cover an issue reprints. Candidates are the covers of the issues printing the same
   stories (table `inducks_entryurl` for their scans); the artwork area is compared by difference
   hash, and a code is kept only when it is clearly the closest. `find_story_code` does the same
-  for a story from the image of its first page. Needs Pillow (`[covers]` extra).
+  for a story from the image of its first page, falling back to stories with the same `pages`
+  length (`page_candidates_by_length`) when no story codes in the issue are known yet. Needs
+  Pillow (`[covers]` extra).
 
 ## Install
 

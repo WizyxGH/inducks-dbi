@@ -66,6 +66,33 @@ def page_candidates(query, story_codes, own_issue: str = "", issues: int = 12) -
     return _candidates(query, story_codes, own_issue, issues, covers=False)
 
 
+def page_candidates_by_length(query, pages: int, own_issue: str = "", limit: int = 20) -> dict[str, list[str]]:
+    """Fallback candidates when no story codes in the issue are known yet: recent stories with
+    the exact same ``entirepages`` and a webusers page-1 scan."""
+    if not pages or pages <= 0:
+        return {}
+    try:
+        rows = query(
+            "SELECT v.storycode, u.entrycode, u.url "
+            "FROM inducks_storyversion v "
+            "JOIN inducks_entryurl u ON u.storycode = v.storycode "
+            "WHERE v.entirepages = ? AND u.sitecode = 'webusers' AND u.pagenumber = '1' "
+            "AND v.storycode NOT LIKE '%-00' "
+            "ORDER BY u.url DESC LIMIT ?",
+            (str(int(pages)), limit * 3),
+        ) or []
+    except Exception:
+        return {}
+    found: dict[str, list[str]] = {}
+    for code, entrycode, url in rows:
+        if not code or _same_issue(entrycode or "", own_issue):
+            continue
+        if code not in found and len(found) >= limit:
+            continue
+        found.setdefault(code, []).append(scan_url(url))
+    return found
+
+
 def _candidates(query, story_codes, own_issue: str, issues: int, covers: bool) -> dict[str, list[str]]:
     codes = sorted({c for c in story_codes if c})
     if not codes:
@@ -150,12 +177,14 @@ def find_cover_code(query, cover_bytes: bytes, story_codes, fetch, own_issue: st
     return None
 
 
-def find_story_code(query, page_bytes: bytes, story_codes, fetch, own_issue: str = "", log=print):
+def find_story_code(query, page_bytes: bytes, story_codes, fetch, own_issue: str = "",
+                    pages: int | None = None, log=print):
     """Story code of a story from the image of its first page (a publisher's preview), among the
-    stories of the issues printing ``story_codes``; None when no clear match. Measured on the
-    LTB 606-613 previews: 46 of 67 found, none wrong (the Italian first pages are lettered
-    differently, so the distances are higher than for covers)."""
+    stories of the issues printing ``story_codes`` (or, when none are known yet, stories with the
+    same ``pages`` length); None when no clear match."""
     candidates = page_candidates(query, story_codes, own_issue)
+    if not candidates and pages:
+        candidates = page_candidates_by_length(query, pages, own_issue=own_issue)
     if not candidates:
         return None
     code, scores = best_match(page_bytes, candidates, fetch)
